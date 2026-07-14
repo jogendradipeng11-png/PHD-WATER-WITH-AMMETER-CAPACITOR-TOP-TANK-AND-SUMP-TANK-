@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Smart Water Tank Control</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    body { background: linear-gradient(135deg, #0a192f, #13294b, #1e3a5f); min-height: 100vh; color: #d0e0ff; }
+    .card { background: rgba(20,35,60,0.65); border:1px solid rgba(100,150,255,0.25); border-radius:20px; backdrop-filter:blur(14px); }
+    .gauge-container { width:260px; height:260px; margin:0 auto; position:relative; }
+    .gauge { width:100%; height:100%; border-radius:50%; background:conic-gradient(#4ade80 0% var(--level,0%), #facc15 var(--level,0%) 75%, #f87171 75% 100%); position:relative; }
+    .gauge-inner { position:absolute; top:14%; left:14%; width:72%; height:72%; background:#0f1d36; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+    .gauge-value { font-size:3.8rem; font-weight:800; color:#4ade80; text-shadow:0 0 20px rgba(74,222,128,0.7); }
+    .gauge-sump { width:140px; height:140px; margin:0 auto; position:relative; }
+    .gauge-sump .gauge { background:conic-gradient(#60a5fa 0% var(--sump-level,0%), #1e3a5f var(--sump-level,0%) 100%); }
+    .gauge-sump .gauge-inner { background:#0a192f; }
+    .gauge-sump .gauge-value { font-size:2rem; color:#60a5fa; text-shadow:0 0 20px rgba(96,165,250,0.7); }
+    .alert-box { border-radius:12px; border-left:6px solid; margin-bottom:1rem; }
+    .status-online  { color:#4ade80; font-weight:700; }
+    .status-offline { color:#f87171; font-weight:700; }
+  </style>
+</head>
+<body>
+<div class="container py-5">
+  <h1 class="text-center mb-5 fw-bold text-light">Smart Water Tank Control</h1>
+
+  <!-- Authentication Section -->
+  <div id="auth-section" class="mb-5">
+    <div id="login-form" class="card p-4 mx-auto" style="max-width:480px;">
+      <h4 class="mb-4 text-center">Sign In / Sign Up</h4>
+      <input type="email" id="email" class="form-control mt-3" placeholder="Email" autocomplete="email">
+      <input type="password" id="password" class="form-control mt-3" placeholder="Password" autocomplete="current-password">
+      <div class="mt-4">
+        <label class="form-label fw-bold">Tank ID / Device ID</label>
+        <input type="text" id="tankIdInput" class="form-control" placeholder="e.g. TANK-002" required autocomplete="off">
+        <small class="text-muted">Enter the Tank ID (must match your ESP8266's DEVICE_ID)</small>
+      </div>
+      <button id="signInBtn" class="btn btn-primary w-100 mt-4 py-2 fw-bold">Sign In</button>
+      <button id="signUpBtn" class="btn btn-outline-light w-100 mt-2 py-2">Create New Account</button>
+      <div id="authError" class="alert alert-danger mt-3 d-none"></div>
+      <div id="authSuccess" class="alert alert-success mt-3 d-none"></div>
+    </div>
+
+    <div id="verification-notice" class="alert alert-warning mt-4 mx-auto d-none" style="max-width:480px;">
+      <strong>Email not verified!</strong> Check your inbox (including spam).<br>
+      <button id="resendVerification" class="btn btn-sm btn-outline-primary mt-2 me-2">Resend Link</button>
+      <button id="checkVerified" class="btn btn-sm btn-success mt-2">I've Verified</button>
+    </div>
+
+    <div class="text-center mt-4">
+      <button id="signOutBtn" class="btn btn-outline-danger px-5 py-2 d-none">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- Dashboard (hidden initially) -->
+  <div id="dashboard" class="d-none">
+    <div class="header-info d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+      <div><strong id="userEmailDisplay"></strong><br>Tank ID: <strong id="tankIdDisplay"></strong></div>
+      <div>
+        <button id="configWifiBtn" class="btn btn-outline-warning btn-sm"><i class="fas fa-wifi me-2"></i>Configure WiFi</button>
+        <button id="changeTank" class="btn btn-outline-info btn-sm"><i class="fas fa-sync me-2"></i>Switch Tank</button>
+      </div>
+    </div>
+
+    <!-- WiFi config panel -->
+    <div class="card p-4 mb-4 d-none" id="wifi-section">
+      <h4 class="mb-3 text-warning">WiFi Configuration</h4>
+      <div class="row g-3">
+        <div class="col-md-6"><input type="text" id="wifiSSID" class="form-control" placeholder="WiFi SSID"></div>
+        <div class="col-md-6"><input type="password" id="wifiPass" class="form-control" placeholder="Password"></div>
+      </div>
+      <button id="saveWifi" class="btn btn-success mt-3">Send to Device</button>
+      <button id="skipWifi" class="btn btn-outline-light mt-2">Cancel</button>
+      <div id="wifiStatus" class="mt-2 small text-info"></div>
+    </div>
+
+    <div class="row g-4">
+      <!-- Gauges & status -->
+      <div class="col-lg-5">
+        <div class="card p-4 text-center">
+          <h4>Main Tank Level</h4>
+          <div class="gauge-container"><div class="gauge" id="gauge"><div class="gauge-inner"><div class="gauge-value" id="waterLevel">---</div></div></div></div>
+          <div class="mt-3">Pump: <strong id="pumpStatus">Unknown</strong><br>Current: <strong id="currentDisplay">— A</strong><br>Mode: <strong id="modeStatus">Auto</strong><br>Device: <strong id="deviceStatus" class="status-offline">Offline</strong></div>
+          <button id="resetESP" class="btn btn-sm btn-outline-danger mt-2">Restart Device</button>
+        </div>
+
+        <!-- Sump Gauge (new) -->
+        <div class="card p-3 mt-3 text-center">
+          <h5>Sump Tank Level</h5>
+          <div class="gauge-sump"><div class="gauge" id="sumpGauge"><div class="gauge-inner"><div class="gauge-value" id="sumpLevelDisplay">---</div></div></div></div>
+          <div class="mt-2 small">Sump Full: <span id="sumpFullDisplay">90</span>% &nbsp;|&nbsp; Top Empty: <span id="topEmptyDisplay">10</span>%</div>
+        </div>
+
+        <div id="alertsContainer" class="mt-3"></div>
+      </div>
+
+      <!-- Controls & Settings -->
+      <div class="col-lg-7">
+        <div class="card p-4">
+          <h4>Settings</h4>
+          <div class="row g-3">
+            <div class="col-6"><label>Tank Height (cm)</label><input type="number" id="tankHeight" class="form-control" step="1"></div>
+            <div class="col-6"><label>Start Below (%)</label><input type="number" id="minLevel" class="form-control"></div>
+            <div class="col-6"><label>Stop Above (%)</label><input type="number" id="maxLevel" class="form-control"></div>
+            <div class="col-6"><label>Low Alert (%)</label><input type="number" id="lowAlertLevel" class="form-control"></div>
+            <div class="col-6"><label>High Alert (%)</label><input type="number" id="highAlertLevel" class="form-control"></div>
+            <div class="col-6"><label>Low Current Warn (A)</label><input type="number" id="lowCurrentWarn" step="0.01" class="form-control"></div>
+            <div class="col-6"><label>High Current Warn (A)</label><input type="number" id="highCurrentWarn" step="0.1" class="form-control"></div>
+            <div class="col-6"><label>Low Cutoff (A)</label><input type="number" id="lowCurrentCutoff" step="0.01" class="form-control"></div>
+            <div class="col-6"><label>High Cutoff (A)</label><input type="number" id="highCurrentCutoff" step="0.1" class="form-control"></div>
+            <div class="col-6"><label>Start Capacitor Time (s)</label><input type="number" id="startCapTime" step="0.1" min="0" class="form-control"></div>
+            <!-- New sump settings -->
+            <div class="col-6"><label>Sump Full Level (%)</label><input type="number" id="sumpFullLevel" min="0" max="100" class="form-control"></div>
+            <div class="col-6"><label>Top Empty Level (%)</label><input type="number" id="topEmptyLevel" min="0" max="100" class="form-control"></div>
+            <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" id="ammeterBypass"><label>Bypass Ammeter Protection</label></div></div>
+          </div>
+          <button id="saveSettings" class="btn btn-primary mt-4">Save Settings</button>
+
+          <hr class="my-4">
+          <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Control Mode</h5>
+            <div class="d-flex align-items-center gap-3">
+              <span>Auto</span>
+              <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="modeToggle" style="transform:scale(1.2)"></div>
+              <span>Manual</span>
+            </div>
+          </div>
+          <div id="manualControls" class="d-none text-center mt-3">
+            <button id="manualOn" class="btn btn-success mx-2">Turn ON</button>
+            <button id="manualOff" class="btn btn-danger mx-2">Turn OFF</button>
+            <div id="manualStatus" class="mt-2 small"></div>
+          </div>
+
+          <!-- Capacitor Bypass Button (new) -->
+          <hr class="my-3">
+          <div class="d-flex justify-content-between align-items-center">
+            <span><strong>Capacitor Bypass</strong> <i class="fas fa-info-circle" data-bs-toggle="tooltip" title="When ON, the starting capacitor relay is never activated"></i></span>
+            <button id="capBypassToggle" class="btn btn-outline-warning btn-sm">
+              <span id="capBypassStatus">OFF</span>
+            </button>
+          </div>
+          <div class="mt-2 small text-muted">Currently: <span id="capBypassCurrent">OFF</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script>
+  // ================= FIREBASE CONFIG =================
+  const firebaseConfig = {
+    apiKey: "AIzaSyDobkq754AuzxJOpXeRL8CFxMFxM5rKXp0",
+    authDomain: "phdwaterammeter.firebaseapp.com",
+    databaseURL: "https://phdwaterammeter-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "phdwaterammeter",
+    storageBucket: "phdwaterammeter.firebasestorage.app",
+    appId: "1:355404715768:web:27628a3a7284a3e2960d0d"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.database();
+
+  // ================= DOM Elements =================
+  const els = {
+    loginForm: document.getElementById('login-form'),
+    dashboard: document.getElementById('dashboard'),
+    signOutBtn: document.getElementById('signOutBtn'),
+    authError: document.getElementById('authError'),
+    authSuccess: document.getElementById('authSuccess'),
+    verificationNotice: document.getElementById('verification-notice'),
+    tankIdInput: document.getElementById('tankIdInput'),
+    modeToggle: document.getElementById('modeToggle'),
+    manualControls: document.getElementById('manualControls'),
+    manualOn: document.getElementById('manualOn'),
+    manualOff: document.getElementById('manualOff'),
+    manualStatus: document.getElementById('manualStatus'),
+    deviceStatus: document.getElementById('deviceStatus'),
+    resetESP: document.getElementById('resetESP'),
+    wifiSection: document.getElementById('wifi-section'),
+    wifiStatus: document.getElementById('wifiStatus'),
+    saveWifi: document.getElementById('saveWifi'),
+    skipWifi: document.getElementById('skipWifi'),
+    configWifiBtn: document.getElementById('configWifiBtn'),
+    userEmailDisplay: document.getElementById('userEmailDisplay'),
+    tankIdDisplay: document.getElementById('tankIdDisplay'),
+    changeTank: document.getElementById('changeTank'),
+    waterLevel: document.getElementById('waterLevel'),
+    pumpStatus: document.getElementById('pumpStatus'),
+    currentDisplay: document.getElementById('currentDisplay'),
+    modeStatus: document.getElementById('modeStatus'),
+    gauge: document.getElementById('gauge'),
+    lowCurrentWarn: document.getElementById('lowCurrentWarn'),
+    highCurrentWarn: document.getElementById('highCurrentWarn'),
+    lowCurrentCutoff: document.getElementById('lowCurrentCutoff'),
+    highCurrentCutoff: document.getElementById('highCurrentCutoff'),
+    ammeterBypass: document.getElementById('ammeterBypass'),
+    tankHeight: document.getElementById('tankHeight'),
+    minLevel: document.getElementById('minLevel'),
+    maxLevel: document.getElementById('maxLevel'),
+    lowAlertLevel: document.getElementById('lowAlertLevel'),
+    highAlertLevel: document.getElementById('highAlertLevel'),
+    startCapTime: document.getElementById('startCapTime'),
+    // new elements
+    sumpLevelDisplay: document.getElementById('sumpLevelDisplay'),
+    sumpGauge: document.getElementById('sumpGauge'),
+    sumpFullLevel: document.getElementById('sumpFullLevel'),
+    topEmptyLevel: document.getElementById('topEmptyLevel'),
+    sumpFullDisplay: document.getElementById('sumpFullDisplay'),
+    topEmptyDisplay: document.getElementById('topEmptyDisplay'),
+    capBypassToggle: document.getElementById('capBypassToggle'),
+    capBypassStatus: document.getElementById('capBypassStatus'),
+    capBypassCurrent: document.getElementById('capBypassCurrent')
+  };
+
+  let currentTankId = null;
+  let lastHeartbeat = 0;
+  const HEARTBEAT_TIMEOUT = 30000;
+
+  // Helper: Show/hide error messages
+  function showError(msg) { els.authError.textContent = msg; els.authError.classList.remove('d-none'); els.authSuccess.classList.add('d-none'); }
+  function showSuccess(msg) { els.authSuccess.textContent = msg; els.authSuccess.classList.remove('d-none'); els.authError.classList.add('d-none'); }
+  function clearMessages() { els.authError.classList.add('d-none'); els.authSuccess.classList.add('d-none'); }
+
+  // Show login screen
+  function showLogin() {
+    els.loginForm.classList.remove('d-none');
+    els.dashboard.classList.add('d-none');
+    els.signOutBtn.classList.add('d-none');
+    els.verificationNotice.classList.add('d-none');
+    clearMessages();
+  }
+
+  // ================= AUTH =================
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      user.reload().then(() => {
+        const REQUIRE_VERIFICATION = false;
+        if (!REQUIRE_VERIFICATION || user.emailVerified) {
+          const savedTank = localStorage.getItem('selectedTankId');
+          if (savedTank) showDashboard(savedTank);
+          else showLogin();
+        } else {
+          els.verificationNotice.classList.remove('d-none');
+          els.signOutBtn.classList.remove('d-none');
+          els.loginForm.classList.add('d-none');
+          els.dashboard.classList.add('d-none');
+        }
+      });
+    } else {
+      showLogin();
+    }
+  });
+
+  document.getElementById('signInBtn').onclick = () => {
+    const email = document.getElementById('email').value.trim();
+    const pass = document.getElementById('password').value.trim();
+    const tankId = els.tankIdInput.value.trim().toUpperCase();
+    if (!email || !pass || !tankId) return showError("All fields required");
+    clearMessages();
+    showSuccess("Signing in...");
+    auth.signInWithEmailAndPassword(email, pass)
+      .then(() => {
+        localStorage.setItem('selectedTankId', tankId);
+        showSuccess("Success! Loading dashboard...");
+        setTimeout(() => location.reload(), 1000);
+      })
+      .catch(err => showError(err.message));
+  };
+
+  document.getElementById('signUpBtn').onclick = () => {
+    const email = document.getElementById('email').value.trim();
+    const pass = document.getElementById('password').value.trim();
+    const tankId = els.tankIdInput.value.trim().toUpperCase();
+    if (!email || !pass || !tankId) return showError("All fields required");
+    if (pass.length < 6) return showError("Password must be ≥6 characters");
+    clearMessages();
+    showSuccess("Creating account...");
+    auth.createUserWithEmailAndPassword(email, pass)
+      .then(cred => cred.user.sendEmailVerification())
+      .then(() => {
+        localStorage.setItem('selectedTankId', tankId);
+        showSuccess("Verification email sent. Please verify then sign in.");
+      })
+      .catch(err => showError(err.message));
+  };
+
+  document.getElementById('resendVerification').onclick = () => auth.currentUser?.sendEmailVerification().then(() => showSuccess("Verification email resent"));
+  document.getElementById('checkVerified').onclick = () => auth.currentUser?.reload().then(() => { if (auth.currentUser.emailVerified) location.reload(); else showError("Not yet verified"); });
+
+  els.signOutBtn.onclick = () => { auth.signOut(); localStorage.removeItem('selectedTankId'); showLogin(); };
+
+  // ================= DASHBOARD =================
+  function showDashboard(tankId) {
+    currentTankId = tankId;
+    els.userEmailDisplay.textContent = auth.currentUser.email;
+    els.tankIdDisplay.textContent = tankId;
+    els.loginForm.classList.add('d-none');
+    els.dashboard.classList.remove('d-none');
+    els.signOutBtn.classList.remove('d-none');
+    els.verificationNotice.classList.add('d-none');
+    loadSettings();
+    startRealtimeListeners();
+  }
+
+  els.changeTank.onclick = () => { localStorage.removeItem('selectedTankId'); auth.signOut(); };
+  els.configWifiBtn.onclick = () => els.wifiSection.classList.toggle('d-none');
+  els.skipWifi.onclick = () => els.wifiSection.classList.add('d-none');
+
+  els.saveWifi.onclick = () => {
+    if (!currentTankId) return;
+    const ssid = document.getElementById('wifiSSID').value.trim();
+    const pass = document.getElementById('wifiPass').value.trim();
+    if (!ssid) return els.wifiStatus.textContent = "SSID required";
+    db.ref(`/tanks/${currentTankId}/wifi`).set({ ssid, password: pass })
+      .then(() => els.wifiStatus.textContent = "WiFi credentials sent!")
+      .catch(err => els.wifiStatus.textContent = "Error: "+err.message);
+  };
+
+  function loadSettings() {
+    if (!currentTankId) return;
+    db.ref(`/tanks/${currentTankId}`).once('value').then(snap => {
+      const d = snap.val() || {};
+      els.tankHeight.value = d.tankHeight ?? 120;
+      els.minLevel.value = d.minLevel ?? 20;
+      els.maxLevel.value = d.maxLevel ?? 80;
+      els.lowAlertLevel.value = d.lowAlertLevel ?? 10;
+      els.highAlertLevel.value = d.highAlertLevel ?? 95;
+      els.lowCurrentWarn.value = d.lowCurrentWarn ?? 0.30;
+      els.highCurrentWarn.value = d.highCurrentWarn ?? 5.0;
+      els.lowCurrentCutoff.value = d.lowCurrentCutoff ?? 0.15;
+      els.highCurrentCutoff.value = d.highCurrentCutoff ?? 8.0;
+      els.ammeterBypass.checked = !!d.ammeterBypass;
+      els.startCapTime.value = d.startCapTime ?? 0.5;
+      // new fields
+      els.sumpFullLevel.value = d.sumpFullLevel ?? 90;
+      els.topEmptyLevel.value = d.topEmptyLevel ?? 10;
+      els.sumpFullDisplay.textContent = d.sumpFullLevel ?? 90;
+      els.topEmptyDisplay.textContent = d.topEmptyLevel ?? 10;
+      // capacitor bypass status
+      const capBypass = !!d.capacitorBypass;
+      updateCapBypassUI(capBypass);
+    });
+  }
+
+  function updateCapBypassUI(state) {
+    els.capBypassStatus.textContent = state ? 'ON' : 'OFF';
+    els.capBypassCurrent.textContent = state ? 'ON' : 'OFF';
+    els.capBypassToggle.classList.toggle('btn-outline-warning', !state);
+    els.capBypassToggle.classList.toggle('btn-warning', state);
+  }
+
+  document.getElementById('saveSettings').onclick = () => {
+    if (!currentTankId) return;
+    const updates = {
+      tankHeight: parseFloat(els.tankHeight.value),
+      minLevel: parseInt(els.minLevel.value),
+      maxLevel: parseInt(els.maxLevel.value),
+      lowAlertLevel: parseInt(els.lowAlertLevel.value),
+      highAlertLevel: parseInt(els.highAlertLevel.value),
+      lowCurrentWarn: parseFloat(els.lowCurrentWarn.value),
+      highCurrentWarn: parseFloat(els.highCurrentWarn.value),
+      lowCurrentCutoff: parseFloat(els.lowCurrentCutoff.value),
+      highCurrentCutoff: parseFloat(els.highCurrentCutoff.value),
+      ammeterBypass: els.ammeterBypass.checked,
+      startCapTime: parseFloat(els.startCapTime.value),
+      sumpFullLevel: parseInt(els.sumpFullLevel.value),
+      topEmptyLevel: parseInt(els.topEmptyLevel.value)
+    };
+    db.ref(`/tanks/${currentTankId}`).update(updates).then(() => alert("Settings saved"));
+  };
+
+  els.resetESP.onclick = () => {
+    if(confirm("Restart the device?")) db.ref(`/tanks/${currentTankId}/command`).set("restart");
+  };
+
+  els.modeToggle.onchange = () => {
+    if (!currentTankId) return;
+    const isManual = els.modeToggle.checked;
+    db.ref(`/tanks/${currentTankId}/autoMode`).set(!isManual);
+    els.manualControls.classList.toggle('d-none', !isManual);
+    els.modeStatus.textContent = isManual ? "Manual" : "Auto";
+  };
+
+  els.manualOn.onclick = () => {
+    if (!currentTankId) return;
+    db.ref(`/tanks/${currentTankId}/manualPump`).set(true);
+    els.manualStatus.textContent = "ON command sent";
+  };
+  els.manualOff.onclick = () => {
+    if (!currentTankId) return;
+    db.ref(`/tanks/${currentTankId}/manualPump`).set(false);
+    els.manualStatus.textContent = "OFF command sent";
+  };
+
+  // Capacitor bypass toggle button
+  els.capBypassToggle.onclick = () => {
+    if (!currentTankId) return;
+    const newState = !(els.capBypassStatus.textContent === 'ON');
+    db.ref(`/tanks/${currentTankId}/capacitorBypass`).set(newState)
+      .then(() => {
+        updateCapBypassUI(newState);
+      })
+      .catch(err => console.error("Failed to set capacitor bypass:", err));
+  };
+
+  function startRealtimeListeners() {
+    if (!currentTankId) return;
+    const base = `/tanks/${currentTankId}`;
+    db.ref(`${base}/waterLevel`).on('value', snap => {
+      let lvl = snap.val() ?? 0;
+      els.waterLevel.textContent = Math.round(lvl)+'%';
+      els.gauge.style.setProperty('--level', lvl+'%');
+    });
+    db.ref(`${base}/sumpLevel`).on('value', snap => {
+      let lvl = snap.val() ?? 0;
+      els.sumpLevelDisplay.textContent = Math.round(lvl)+'%';
+      els.sumpGauge.style.setProperty('--sump-level', lvl+'%');
+    });
+    db.ref(`${base}/current`).on('value', snap => { let c = snap.val(); els.currentDisplay.textContent = (c!=null?c.toFixed(2):'0.00')+' A'; });
+    db.ref(`${base}/pumpStatus`).on('value', snap => { let on = snap.val(); els.pumpStatus.textContent = on?"ON":"OFF"; els.pumpStatus.className = on?"text-success":"text-danger"; });
+    db.ref(`${base}/autoMode`).on('value', snap => { let auto = snap.val() !== false; els.modeToggle.checked = !auto; els.manualControls.classList.toggle('d-none', auto); els.modeStatus.textContent = auto?"Auto":"Manual"; });
+    db.ref(`${base}/manualPump`).on('value', snap => { let on = !!snap.val(); els.manualOn.classList.toggle('active', on); els.manualOff.classList.toggle('active', !on); });
+    db.ref(`${base}/lastHeartbeat`).on('value', snap => { let hb = snap.val()*1000 || 0; let online = Date.now() - hb < HEARTBEAT_TIMEOUT; els.deviceStatus.textContent = online?"Online":"Offline"; els.deviceStatus.className = online?"status-online":"status-offline"; });
+    // Capacitor bypass status
+    db.ref(`${base}/capacitorBypass`).on('value', snap => {
+      const state = !!snap.val();
+      updateCapBypassUI(state);
+    });
+    // Sump thresholds display
+    db.ref(`${base}/sumpFullLevel`).on('value', snap => {
+      let v = snap.val() ?? 90;
+      els.sumpFullDisplay.textContent = v;
+    });
+    db.ref(`${base}/topEmptyLevel`).on('value', snap => {
+      let v = snap.val() ?? 10;
+      els.topEmptyDisplay.textContent = v;
+    });
+
+    // Alerts container
+    const alertsDiv = document.getElementById('alertsContainer');
+    function showAlert(key, msg, type) {
+      db.ref(`${base}/${key}`).on('value', snap => {
+        let existing = alertsDiv.querySelector(`.alert-${key}`);
+        if(snap.val()) {
+          if(!existing) {
+            let div = document.createElement('div');
+            div.className = `alert alert-${type} alert-box d-flex justify-content-between align-items-center`;
+            div.innerHTML = `<span>${msg}</span><button class="btn-close" data-key="${key}"></button>`;
+            div.querySelector('.btn-close').onclick = () => db.ref(`${base}/${key}`).set(false);
+            alertsDiv.appendChild(div);
+          }
+        } else if(existing) existing.remove();
+      });
+    }
+    showAlert('alertLowLevel', '⚠️ Low water level!', 'warning');
+    showAlert('alertHighLevel', '⚠️ High water level!', 'info');
+    showAlert('alertLowCurrent', '⚠️ Low current detected', 'warning');
+    showAlert('alertHighCurrent', '⚠️ High current – overload!', 'danger');
+    showAlert('alertDryRunCurrent', '⚠️ DRY RUN WARNING!', 'danger');
+  }
+
+  console.log("Ready – Firebase configured. Ensure Email/Password auth is enabled in Firebase Console.");
+</script>
+</body>
+</html>
