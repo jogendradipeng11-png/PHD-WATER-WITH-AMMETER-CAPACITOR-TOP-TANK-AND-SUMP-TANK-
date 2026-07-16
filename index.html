@@ -86,11 +86,14 @@
           <button id="resetESP" class="btn btn-sm btn-outline-danger mt-2">Restart Device</button>
         </div>
 
-        <!-- Sump Gauge (new) -->
+        <!-- Sump Gauge -->
         <div class="card p-3 mt-3 text-center">
           <h5>Sump Tank Level</h5>
           <div class="gauge-sump"><div class="gauge" id="sumpGauge"><div class="gauge-inner"><div class="gauge-value" id="sumpLevelDisplay">---</div></div></div></div>
-          <div class="mt-2 small">Sump Full: <span id="sumpFullDisplay">90</span>% &nbsp;|&nbsp; Top Empty: <span id="topEmptyDisplay">10</span>%</div>
+          <div class="mt-2 small">
+            Sump Full: <span id="sumpFullDisplay">90</span>% &nbsp;|&nbsp; Top Empty: <span id="topEmptyDisplay">10</span>%<br>
+            Sump Height: <span id="sumpHeightDisplay">120</span> cm
+          </div>
         </div>
 
         <div id="alertsContainer" class="mt-3"></div>
@@ -102,6 +105,7 @@
           <h4>Settings</h4>
           <div class="row g-3">
             <div class="col-6"><label>Tank Height (cm)</label><input type="number" id="tankHeight" class="form-control" step="1"></div>
+            <div class="col-6"><label>Sump Height (cm)</label><input type="number" id="sumpHeight" class="form-control" step="1"></div>
             <div class="col-6"><label>Start Below (%)</label><input type="number" id="minLevel" class="form-control"></div>
             <div class="col-6"><label>Stop Above (%)</label><input type="number" id="maxLevel" class="form-control"></div>
             <div class="col-6"><label>Low Alert (%)</label><input type="number" id="lowAlertLevel" class="form-control"></div>
@@ -111,9 +115,10 @@
             <div class="col-6"><label>Low Cutoff (A)</label><input type="number" id="lowCurrentCutoff" step="0.01" class="form-control"></div>
             <div class="col-6"><label>High Cutoff (A)</label><input type="number" id="highCurrentCutoff" step="0.1" class="form-control"></div>
             <div class="col-6"><label>Start Capacitor Time (s)</label><input type="number" id="startCapTime" step="0.1" min="0" class="form-control"></div>
-            <!-- New sump settings -->
+            <!-- Sump thresholds -->
             <div class="col-6"><label>Sump Full Level (%)</label><input type="number" id="sumpFullLevel" min="0" max="100" class="form-control"></div>
             <div class="col-6"><label>Top Empty Level (%)</label><input type="number" id="topEmptyLevel" min="0" max="100" class="form-control"></div>
+            <div class="col-6"><label>Sump Low (Dry) Level (%)</label><input type="number" id="sumpLowLevel" min="0" max="100" class="form-control"></div>
             <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" id="ammeterBypass"><label>Bypass Ammeter Protection</label></div></div>
           </div>
           <button id="saveSettings" class="btn btn-primary mt-4">Save Settings</button>
@@ -133,7 +138,7 @@
             <div id="manualStatus" class="mt-2 small"></div>
           </div>
 
-          <!-- Capacitor Bypass Button (new) -->
+          <!-- Capacitor Bypass Button -->
           <hr class="my-3">
           <div class="d-flex justify-content-between align-items-center">
             <span><strong>Capacitor Bypass</strong> <i class="fas fa-info-circle" data-bs-toggle="tooltip" title="When ON, the starting capacitor relay is never activated"></i></span>
@@ -205,13 +210,16 @@
     lowAlertLevel: document.getElementById('lowAlertLevel'),
     highAlertLevel: document.getElementById('highAlertLevel'),
     startCapTime: document.getElementById('startCapTime'),
-    // new elements
+    // Sump elements
     sumpLevelDisplay: document.getElementById('sumpLevelDisplay'),
     sumpGauge: document.getElementById('sumpGauge'),
     sumpFullLevel: document.getElementById('sumpFullLevel'),
     topEmptyLevel: document.getElementById('topEmptyLevel'),
     sumpFullDisplay: document.getElementById('sumpFullDisplay'),
     topEmptyDisplay: document.getElementById('topEmptyDisplay'),
+    sumpHeight: document.getElementById('sumpHeight'),             // NEW
+    sumpHeightDisplay: document.getElementById('sumpHeightDisplay'), // NEW
+    sumpLowLevel: document.getElementById('sumpLowLevel'),         // NEW (for dry protection)
     capBypassToggle: document.getElementById('capBypassToggle'),
     capBypassStatus: document.getElementById('capBypassStatus'),
     capBypassCurrent: document.getElementById('capBypassCurrent')
@@ -326,6 +334,8 @@
     db.ref(`/tanks/${currentTankId}`).once('value').then(snap => {
       const d = snap.val() || {};
       els.tankHeight.value = d.tankHeight ?? 120;
+      els.sumpHeight.value = d.sumpHeight ?? 120;   // NEW
+      els.sumpHeightDisplay.textContent = d.sumpHeight ?? 120; // display
       els.minLevel.value = d.minLevel ?? 20;
       els.maxLevel.value = d.maxLevel ?? 80;
       els.lowAlertLevel.value = d.lowAlertLevel ?? 10;
@@ -336,12 +346,13 @@
       els.highCurrentCutoff.value = d.highCurrentCutoff ?? 8.0;
       els.ammeterBypass.checked = !!d.ammeterBypass;
       els.startCapTime.value = d.startCapTime ?? 0.5;
-      // new fields
+      // Sump fields
       els.sumpFullLevel.value = d.sumpFullLevel ?? 90;
       els.topEmptyLevel.value = d.topEmptyLevel ?? 10;
+      els.sumpLowLevel.value = d.sumpLowLevel ?? 20;   // NEW
       els.sumpFullDisplay.textContent = d.sumpFullLevel ?? 90;
       els.topEmptyDisplay.textContent = d.topEmptyLevel ?? 10;
-      // capacitor bypass status
+      // Capacitor bypass status
       const capBypass = !!d.capacitorBypass;
       updateCapBypassUI(capBypass);
     });
@@ -358,6 +369,7 @@
     if (!currentTankId) return;
     const updates = {
       tankHeight: parseFloat(els.tankHeight.value),
+      sumpHeight: parseFloat(els.sumpHeight.value),   // NEW
       minLevel: parseInt(els.minLevel.value),
       maxLevel: parseInt(els.maxLevel.value),
       lowAlertLevel: parseInt(els.lowAlertLevel.value),
@@ -369,7 +381,8 @@
       ammeterBypass: els.ammeterBypass.checked,
       startCapTime: parseFloat(els.startCapTime.value),
       sumpFullLevel: parseInt(els.sumpFullLevel.value),
-      topEmptyLevel: parseInt(els.topEmptyLevel.value)
+      topEmptyLevel: parseInt(els.topEmptyLevel.value),
+      sumpLowLevel: parseInt(els.sumpLowLevel.value)   // NEW
     };
     db.ref(`/tanks/${currentTankId}`).update(updates).then(() => alert("Settings saved"));
   };
@@ -440,6 +453,12 @@
       let v = snap.val() ?? 10;
       els.topEmptyDisplay.textContent = v;
     });
+    // Sump height display (live update)
+    db.ref(`${base}/sumpHeight`).on('value', snap => {
+      let h = snap.val() ?? 120;
+      els.sumpHeightDisplay.textContent = h;
+      els.sumpHeight.value = h; // keep input in sync
+    });
 
     // Alerts container
     const alertsDiv = document.getElementById('alertsContainer');
@@ -462,6 +481,8 @@
     showAlert('alertLowCurrent', '⚠️ Low current detected', 'warning');
     showAlert('alertHighCurrent', '⚠️ High current – overload!', 'danger');
     showAlert('alertDryRunCurrent', '⚠️ DRY RUN WARNING!', 'danger');
+    // NEW: sump dry alert
+    showAlert('alertSumpDry', '⚠️ SUMP TANK DRY! Pump stopped.', 'danger');
   }
 
   console.log("Ready – Firebase configured. Ensure Email/Password auth is enabled in Firebase Console.");
