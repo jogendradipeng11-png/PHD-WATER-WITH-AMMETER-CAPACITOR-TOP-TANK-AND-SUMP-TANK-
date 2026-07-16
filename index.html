@@ -77,7 +77,7 @@
     </div>
 
     <div class="row g-4">
-      <!-- Gauges & status -->
+      <!-- Left Column: Gauges & Sump Settings -->
       <div class="col-lg-5">
         <div class="card p-4 text-center">
           <h4>Main Tank Level</h4>
@@ -96,16 +96,26 @@
           </div>
         </div>
 
+        <!-- NEW: Sump Settings Card (separated) -->
+        <div class="card p-3 mt-3">
+          <h5>Sump Settings</h5>
+          <div class="row g-2">
+            <div class="col-6"><label>Sump Height (cm)</label><input type="number" id="sumpHeight" class="form-control" step="1"></div>
+            <div class="col-6"><label>Sump Full Level (%)</label><input type="number" id="sumpFullLevel" min="0" max="100" class="form-control"></div>
+            <div class="col-6"><label>Top Empty Level (%)</label><input type="number" id="topEmptyLevel" min="0" max="100" class="form-control"></div>
+            <div class="col-6"><label>Sump Low (Dry) Level (%)</label><input type="number" id="sumpLowLevel" min="0" max="100" class="form-control"></div>
+          </div>
+        </div>
+
         <div id="alertsContainer" class="mt-3"></div>
       </div>
 
-      <!-- Controls & Settings -->
+      <!-- Right Column: Main Settings & Controls -->
       <div class="col-lg-7">
         <div class="card p-4">
           <h4>Settings</h4>
           <div class="row g-3">
             <div class="col-6"><label>Tank Height (cm)</label><input type="number" id="tankHeight" class="form-control" step="1"></div>
-            <div class="col-6"><label>Sump Height (cm)</label><input type="number" id="sumpHeight" class="form-control" step="1"></div>
             <div class="col-6"><label>Start Below (%)</label><input type="number" id="minLevel" class="form-control"></div>
             <div class="col-6"><label>Stop Above (%)</label><input type="number" id="maxLevel" class="form-control"></div>
             <div class="col-6"><label>Low Alert (%)</label><input type="number" id="lowAlertLevel" class="form-control"></div>
@@ -115,10 +125,7 @@
             <div class="col-6"><label>Low Cutoff (A)</label><input type="number" id="lowCurrentCutoff" step="0.01" class="form-control"></div>
             <div class="col-6"><label>High Cutoff (A)</label><input type="number" id="highCurrentCutoff" step="0.1" class="form-control"></div>
             <div class="col-6"><label>Start Capacitor Time (s)</label><input type="number" id="startCapTime" step="0.1" min="0" class="form-control"></div>
-            <!-- Sump thresholds -->
-            <div class="col-6"><label>Sump Full Level (%)</label><input type="number" id="sumpFullLevel" min="0" max="100" class="form-control"></div>
-            <div class="col-6"><label>Top Empty Level (%)</label><input type="number" id="topEmptyLevel" min="0" max="100" class="form-control"></div>
-            <div class="col-6"><label>Sump Low (Dry) Level (%)</label><input type="number" id="sumpLowLevel" min="0" max="100" class="form-control"></div>
+            <!-- Sump fields are now in the left column – removed from here -->
             <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" id="ammeterBypass"><label>Bypass Ammeter Protection</label></div></div>
           </div>
           <button id="saveSettings" class="btn btn-primary mt-4">Save Settings</button>
@@ -210,16 +217,16 @@
     lowAlertLevel: document.getElementById('lowAlertLevel'),
     highAlertLevel: document.getElementById('highAlertLevel'),
     startCapTime: document.getElementById('startCapTime'),
-    // Sump elements
+    // Sump elements (now in the left card)
     sumpLevelDisplay: document.getElementById('sumpLevelDisplay'),
     sumpGauge: document.getElementById('sumpGauge'),
     sumpFullLevel: document.getElementById('sumpFullLevel'),
     topEmptyLevel: document.getElementById('topEmptyLevel'),
     sumpFullDisplay: document.getElementById('sumpFullDisplay'),
     topEmptyDisplay: document.getElementById('topEmptyDisplay'),
-    sumpHeight: document.getElementById('sumpHeight'),             // NEW
-    sumpHeightDisplay: document.getElementById('sumpHeightDisplay'), // NEW
-    sumpLowLevel: document.getElementById('sumpLowLevel'),         // NEW (for dry protection)
+    sumpHeight: document.getElementById('sumpHeight'),
+    sumpHeightDisplay: document.getElementById('sumpHeightDisplay'),
+    sumpLowLevel: document.getElementById('sumpLowLevel'),
     capBypassToggle: document.getElementById('capBypassToggle'),
     capBypassStatus: document.getElementById('capBypassStatus'),
     capBypassCurrent: document.getElementById('capBypassCurrent')
@@ -334,8 +341,8 @@
     db.ref(`/tanks/${currentTankId}`).once('value').then(snap => {
       const d = snap.val() || {};
       els.tankHeight.value = d.tankHeight ?? 120;
-      els.sumpHeight.value = d.sumpHeight ?? 120;   // NEW
-      els.sumpHeightDisplay.textContent = d.sumpHeight ?? 120; // display
+      els.sumpHeight.value = d.sumpHeight ?? 120;
+      els.sumpHeightDisplay.textContent = d.sumpHeight ?? 120;
       els.minLevel.value = d.minLevel ?? 20;
       els.maxLevel.value = d.maxLevel ?? 80;
       els.lowAlertLevel.value = d.lowAlertLevel ?? 10;
@@ -349,7 +356,7 @@
       // Sump fields
       els.sumpFullLevel.value = d.sumpFullLevel ?? 90;
       els.topEmptyLevel.value = d.topEmptyLevel ?? 10;
-      els.sumpLowLevel.value = d.sumpLowLevel ?? 20;   // NEW
+      els.sumpLowLevel.value = d.sumpLowLevel ?? 20;
       els.sumpFullDisplay.textContent = d.sumpFullLevel ?? 90;
       els.topEmptyDisplay.textContent = d.topEmptyLevel ?? 10;
       // Capacitor bypass status
@@ -369,7 +376,7 @@
     if (!currentTankId) return;
     const updates = {
       tankHeight: parseFloat(els.tankHeight.value),
-      sumpHeight: parseFloat(els.sumpHeight.value),   // NEW
+      sumpHeight: parseFloat(els.sumpHeight.value),
       minLevel: parseInt(els.minLevel.value),
       maxLevel: parseInt(els.maxLevel.value),
       lowAlertLevel: parseInt(els.lowAlertLevel.value),
@@ -382,7 +389,7 @@
       startCapTime: parseFloat(els.startCapTime.value),
       sumpFullLevel: parseInt(els.sumpFullLevel.value),
       topEmptyLevel: parseInt(els.topEmptyLevel.value),
-      sumpLowLevel: parseInt(els.sumpLowLevel.value)   // NEW
+      sumpLowLevel: parseInt(els.sumpLowLevel.value)
     };
     db.ref(`/tanks/${currentTankId}`).update(updates).then(() => alert("Settings saved"));
   };
