@@ -96,7 +96,7 @@
           </div>
         </div>
 
-        <!-- NEW: Sump Settings Card (separated) -->
+        <!-- Sump Settings Card -->
         <div class="card p-3 mt-3">
           <h5>Sump Settings</h5>
           <div class="row g-2">
@@ -124,8 +124,7 @@
             <div class="col-6"><label>High Current Warn (A)</label><input type="number" id="highCurrentWarn" step="0.1" class="form-control"></div>
             <div class="col-6"><label>Low Cutoff (A)</label><input type="number" id="lowCurrentCutoff" step="0.01" class="form-control"></div>
             <div class="col-6"><label>High Cutoff (A)</label><input type="number" id="highCurrentCutoff" step="0.1" class="form-control"></div>
-            <div class="col-6"><label>Start Capacitor Time (s)</label><input type="number" id="startCapTime" step="0.1" min="0" class="form-control"></div>
-            <!-- Sump fields are now in the left column – removed from here -->
+            <!-- Capacitor Timer and Bypass removed -->
             <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" id="ammeterBypass"><label>Bypass Ammeter Protection</label></div></div>
           </div>
           <button id="saveSettings" class="btn btn-primary mt-4">Save Settings</button>
@@ -145,15 +144,7 @@
             <div id="manualStatus" class="mt-2 small"></div>
           </div>
 
-          <!-- Capacitor Bypass Button -->
-          <hr class="my-3">
-          <div class="d-flex justify-content-between align-items-center">
-            <span><strong>Capacitor Bypass</strong> <i class="fas fa-info-circle" data-bs-toggle="tooltip" title="When ON, the starting capacitor relay is never activated"></i></span>
-            <button id="capBypassToggle" class="btn btn-outline-warning btn-sm">
-              <span id="capBypassStatus">OFF</span>
-            </button>
-          </div>
-          <div class="mt-2 small text-muted">Currently: <span id="capBypassCurrent">OFF</span></div>
+          <!-- Capacitor Bypass Button removed -->
         </div>
       </div>
     </div>
@@ -216,8 +207,8 @@
     maxLevel: document.getElementById('maxLevel'),
     lowAlertLevel: document.getElementById('lowAlertLevel'),
     highAlertLevel: document.getElementById('highAlertLevel'),
-    startCapTime: document.getElementById('startCapTime'),
-    // Sump elements (now in the left card)
+    // startCapTime removed
+    // sump elements
     sumpLevelDisplay: document.getElementById('sumpLevelDisplay'),
     sumpGauge: document.getElementById('sumpGauge'),
     sumpFullLevel: document.getElementById('sumpFullLevel'),
@@ -226,10 +217,8 @@
     topEmptyDisplay: document.getElementById('topEmptyDisplay'),
     sumpHeight: document.getElementById('sumpHeight'),
     sumpHeightDisplay: document.getElementById('sumpHeightDisplay'),
-    sumpLowLevel: document.getElementById('sumpLowLevel'),
-    capBypassToggle: document.getElementById('capBypassToggle'),
-    capBypassStatus: document.getElementById('capBypassStatus'),
-    capBypassCurrent: document.getElementById('capBypassCurrent')
+    sumpLowLevel: document.getElementById('sumpLowLevel')
+    // capBypass elements removed
   };
 
   let currentTankId = null;
@@ -352,24 +341,13 @@
       els.lowCurrentCutoff.value = d.lowCurrentCutoff ?? 0.15;
       els.highCurrentCutoff.value = d.highCurrentCutoff ?? 8.0;
       els.ammeterBypass.checked = !!d.ammeterBypass;
-      els.startCapTime.value = d.startCapTime ?? 0.5;
-      // Sump fields
+      // startCapTime removed
       els.sumpFullLevel.value = d.sumpFullLevel ?? 90;
       els.topEmptyLevel.value = d.topEmptyLevel ?? 10;
       els.sumpLowLevel.value = d.sumpLowLevel ?? 20;
       els.sumpFullDisplay.textContent = d.sumpFullLevel ?? 90;
       els.topEmptyDisplay.textContent = d.topEmptyLevel ?? 10;
-      // Capacitor bypass status
-      const capBypass = !!d.capacitorBypass;
-      updateCapBypassUI(capBypass);
     });
-  }
-
-  function updateCapBypassUI(state) {
-    els.capBypassStatus.textContent = state ? 'ON' : 'OFF';
-    els.capBypassCurrent.textContent = state ? 'ON' : 'OFF';
-    els.capBypassToggle.classList.toggle('btn-outline-warning', !state);
-    els.capBypassToggle.classList.toggle('btn-warning', state);
   }
 
   document.getElementById('saveSettings').onclick = () => {
@@ -386,7 +364,7 @@
       lowCurrentCutoff: parseFloat(els.lowCurrentCutoff.value),
       highCurrentCutoff: parseFloat(els.highCurrentCutoff.value),
       ammeterBypass: els.ammeterBypass.checked,
-      startCapTime: parseFloat(els.startCapTime.value),
+      // startCapTime removed
       sumpFullLevel: parseInt(els.sumpFullLevel.value),
       topEmptyLevel: parseInt(els.topEmptyLevel.value),
       sumpLowLevel: parseInt(els.sumpLowLevel.value)
@@ -417,17 +395,6 @@
     els.manualStatus.textContent = "OFF command sent";
   };
 
-  // Capacitor bypass toggle button
-  els.capBypassToggle.onclick = () => {
-    if (!currentTankId) return;
-    const newState = !(els.capBypassStatus.textContent === 'ON');
-    db.ref(`/tanks/${currentTankId}/capacitorBypass`).set(newState)
-      .then(() => {
-        updateCapBypassUI(newState);
-      })
-      .catch(err => console.error("Failed to set capacitor bypass:", err));
-  };
-
   function startRealtimeListeners() {
     if (!currentTankId) return;
     const base = `/tanks/${currentTankId}`;
@@ -446,11 +413,7 @@
     db.ref(`${base}/autoMode`).on('value', snap => { let auto = snap.val() !== false; els.modeToggle.checked = !auto; els.manualControls.classList.toggle('d-none', auto); els.modeStatus.textContent = auto?"Auto":"Manual"; });
     db.ref(`${base}/manualPump`).on('value', snap => { let on = !!snap.val(); els.manualOn.classList.toggle('active', on); els.manualOff.classList.toggle('active', !on); });
     db.ref(`${base}/lastHeartbeat`).on('value', snap => { let hb = snap.val()*1000 || 0; let online = Date.now() - hb < HEARTBEAT_TIMEOUT; els.deviceStatus.textContent = online?"Online":"Offline"; els.deviceStatus.className = online?"status-online":"status-offline"; });
-    // Capacitor bypass status
-    db.ref(`${base}/capacitorBypass`).on('value', snap => {
-      const state = !!snap.val();
-      updateCapBypassUI(state);
-    });
+    // Capacitor bypass listeners removed
     // Sump thresholds display
     db.ref(`${base}/sumpFullLevel`).on('value', snap => {
       let v = snap.val() ?? 90;
@@ -460,11 +423,10 @@
       let v = snap.val() ?? 10;
       els.topEmptyDisplay.textContent = v;
     });
-    // Sump height display (live update)
     db.ref(`${base}/sumpHeight`).on('value', snap => {
       let h = snap.val() ?? 120;
       els.sumpHeightDisplay.textContent = h;
-      els.sumpHeight.value = h; // keep input in sync
+      els.sumpHeight.value = h;
     });
 
     // Alerts container
@@ -488,7 +450,6 @@
     showAlert('alertLowCurrent', '⚠️ Low current detected', 'warning');
     showAlert('alertHighCurrent', '⚠️ High current – overload!', 'danger');
     showAlert('alertDryRunCurrent', '⚠️ DRY RUN WARNING!', 'danger');
-    // NEW: sump dry alert
     showAlert('alertSumpDry', '⚠️ SUMP TANK DRY! Pump stopped.', 'danger');
   }
 
